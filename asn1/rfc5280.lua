@@ -36,4 +36,6 @@ M.CRLDistributionPoints = asn1.sequence_of(
    {size={min=1}}
 )
 
+M.CRLNumber = asn1.integer{min=0}
+
 return M
