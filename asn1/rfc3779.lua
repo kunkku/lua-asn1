@@ -12,7 +12,7 @@ M.IPAddrBlocks = asn1.sequence_of(
    asn1.sequence{
       {
 	 'addressFamily',
-	 asn1.octet_string{min=2, max=2}.extend(
+	 asn1.octet_string{size={min=2, max=2}}.extend(
 	    function(data)
 	       return {
 		  afi=bit32.bor(bit32.lshift(data:byte(), 8), data:byte(2, 2)),
