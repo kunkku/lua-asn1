@@ -68,7 +68,7 @@ local function type_factory(params, defaults, decoder, encoder)
       return res
    end
 
-   local function check_length(value)
+   local function check_size(value)
       return (not params.min or #value >= params.min) and
 	 (not params.max or #value <= params.max)
    end
@@ -88,7 +88,7 @@ local function type_factory(params, defaults, decoder, encoder)
 	 if meta.tag ~= tag() then return end
 
 	 local value = decoder(data)
-	 if check_length(value) then return value end
+	 if check_size(value) then return value end
       end,
       function(value)
 	 if params.value_type and type(value) ~= params.value_type then
@@ -97,7 +97,7 @@ local function type_factory(params, defaults, decoder, encoder)
 		  type(value)..')'
 	    )
 	 end
-	 if not check_length(value) then
+	 if not check_size(value) then
 	    error('Value to be encoded is of invalid length ('..#value..')')
 	 end
 
