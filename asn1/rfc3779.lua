@@ -24,7 +24,7 @@ M.IPAddrBlocks = asn1.sequence_of(
 	       afi = string.char(bit32.rshift(afi, 8), bit32.band(afi, 0xFF))
 	       return afi..(value.safi and string.char(value.safi) or '')
 	    end
-         )()
+         )
       },
       {
 	 'ipAddressChoice',
@@ -175,7 +175,7 @@ M.IPAddrBlocks = asn1.sequence_of(
 	    ipAddressChoice={addressesOrRanges=addrs}
 	 }
       end
-   )()
+   )
 )
 
 M.ASIdentifiers = asn1.sequence{
@@ -186,7 +186,7 @@ M.ASIdentifiers = asn1.sequence{
 	 asn1.choice{
 	    {
 	       'asIdsOrRanges',
-	       asn1.sequence_of(asn1.choice{{'id', asn1.integer()}})
+	       asn1.sequence_of(asn1.choice{{'id', asn1.integer}})
 	    }
 	 }
       )

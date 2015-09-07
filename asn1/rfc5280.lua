@@ -7,7 +7,7 @@ local asn1 = require('asn1')
 
 local M = {}
 
-M.KeyIdentifier = asn1.octet_string()
+M.KeyIdentifier = asn1.octet_string
 
 M.AuthorityKeyIdentifier = asn1.sequence{
    {'keyIdentifier', asn1.explicit(0, M.KeyIdentifier)}
@@ -25,16 +25,14 @@ M.CRLDistributionPoints = asn1.sequence_of(
 		  asn1.sequence_of(
 		     asn1.choice{
 			{'uniformResourceIdentifier', asn1.ia5string{tag=6}}
-		     },
-		     {tag=0, size={min=1}}
-		  )
+		     }
+		  ){tag=0, size={min=1}}
 	       }
 	    }
 	 )
       }
-   },
-   {size={min=1}}
-)
+   }
+){size={min=1}}
 
 M.CRLNumber = asn1.integer{min=0}
 

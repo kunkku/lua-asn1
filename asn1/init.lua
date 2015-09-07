@@ -27,37 +27,44 @@ local function split(data)
    return meta, data:sub(ml + 1, -1)
 end
 
-local function factory(params, defaults, decoder, encoder)
+local function factory(decoder, encoder, params)
    if not params then params = {} end
-   for k, v in pairs(defaults or {}) do
-      if not params[k] then params[k] = v end
-   end
-   return {
-      _decode=decoder,
-      decode=function(data)
-	 local value = decoder(data)
-	 if value then return value end
-	 error('DER data does not conform to type definition')
-      end,
-      encode=encoder,
-      extend=function(dec, enc)
-	 return function(par)
+
+   local function decode(data) return decoder(data, params) end
+   local function encode(value) return encoder(value, params) end
+
+   return setmetatable(
+      {
+	 _decode=decode,
+	 decode=function(data)
+	    local value = decode(data)
+	    if value then return value end
+	    error('DER data does not conform to type definition')
+	 end,
+	 encode=encode,
+	 extend=function(dec, enc)
 	    return factory(
-	       par,
-	       params,
-	       function(data) return dec(decoder(data)) end,
-	       function(value) return encoder(enc(value)) end
+	       function(data) return dec(decode(data)) end,
+	       function(value) return encode(enc(value)) end,
+	       params
 	    )
 	 end
-      end
-   }
+      },
+      {
+	 __call=function(t, p)
+	    if p then
+	       if p.tag and not p.class then p.class = 'context' end
+	       setmetatable(p, {__index=params})
+	    else p = params end
+	    return factory(decoder, encoder, p)
+	 end
+      }
+   )
 end
 
-local function type_factory(params, defaults, decoder, encoder)
-   if not params then params = {} end
-   if params.tag and not params.class then params.class = 'context' end
+local function type_factory(decoder, encoder)
 
-   local function tag()
+   local function tag(params)
       -- high tag numbers not supported
       assert(params.tag < 0x1F)
 
@@ -69,19 +76,16 @@ local function type_factory(params, defaults, decoder, encoder)
    end
 
    local function check_range(value, bounds)
-      if not bounds then bounds = params end
       return (not bounds.min or value >= bounds.min) and
 	 (not bounds.max or value <= bounds.max)
    end
 
-   local function check_size(value)
+   local function check_size(value, params)
       return not params.size or check_range(#value, params.size)
    end
 
    return factory(
-      params,
-      defaults,
-      function(data)
+      function(data, params)
 	 local meta, data = split(data)
 	 if #data ~= meta.len then
 	    error(
@@ -90,22 +94,24 @@ local function type_factory(params, defaults, decoder, encoder)
 		  ')'
 	    )
 	 end
-	 if meta.tag ~= tag() then return end
+	 if meta.tag ~= tag(params) then return end
 
 	 local value = decoder(data)
-	 if check_size(value) and check_range(value) then return value end
+	 if check_size(value, params) and check_range(value, params) then
+	    return value
+	 end
       end,
-      function(value)
+      function(value, params)
 	 if params.value_type and type(value) ~= params.value_type then
 	    error(
 	       'Invalid value ('..params.value_type..' expeted, got '..
 		  type(value)..')'
 	    )
 	 end
-	 if not check_size(value) then
+	 if not check_size(value, params) then
 	    error('Value to be encoded is of invalid length ('..#value..')')
 	 end
-	 if not check_range(value) then
+	 if not check_range(value, params) then
 	    error(
 	       'Value to be encoded is outside the allowed range ('..value..')'
 	    )
@@ -124,36 +130,27 @@ local function type_factory(params, defaults, decoder, encoder)
 	    table.insert(enc_len, 1, bit32.bor(0x80, #enc_len))
 	 end
 
-	 return string.char(tag(), table.unpack(enc_len))..data
+	 return string.char(tag(params), table.unpack(enc_len))..data
       end
    )
 end
 
-local function str_factory(params, tag)
+local function str_factory(tag)
    local function identity(s) return s end
-
-   return type_factory(
-      params,
-      {class='universal', constructed=false, tag=tag, value_type='string'},
-      identity,
-      identity
-   )
+   return type_factory(identity, identity){
+      class='universal', constructed=false, tag=tag, value_type='string'
+   }
 end
 
-local function seq_factory(params, decoder, encoder)
-   return type_factory(
-      params,
-      {class='universal', constructed=true, tag=0x10, value_type='table'},
-      decoder,
-      encoder
-   )
+local function seq_factory(decoder, encoder)
+   return type_factory(decoder, encoder){
+      class='universal', constructed=true, tag=0x10, value_type='table'
+   }
 end
 
 
 function M.choice(alts)
    return factory(
-      nil,
-      nil,
       function(data)
 	 for _, alt in ipairs(alts) do
 	    local value = alt[2]._decode(data)
@@ -175,96 +172,85 @@ function M.choice(alts)
    )
 end
 
-function M.integer(params)
-   return type_factory(
-      params,
-      {class='universal', constructed=false, tag=0x02, value_type='number'},
-      function(data)
-	 local value = string.byte(data)
+M.integer = type_factory(
+   function(data)
+      local value = string.byte(data)
 
-	 -- negative integers not supported
-	 assert(bit32.band(value, 0x80) == 0x00)
+      -- negative integers not supported
+      assert(bit32.band(value, 0x80) == 0x00)
 
-	 for _, b in ipairs{string.byte(data, 2, -1)} do
-	    value = value * 256 + b
-	 end
-	 return value
-      end,
-      function(value)
-	 if value ~= math.floor(value) then
-	    error('Not an integer: '..value)
-	 end
-
-	 -- negative integers not supported
-	 assert(value > -1)
-
-	 local octs = {}
-	 while value > 0 do
-	    table.insert(octs, 1, value % 256)
-	    value = math.floor(value / 256)
-	 end
-	 if bit32.band(octs[1], 0x80) == 0x80 then table.insert(octs, 1, 0) end
-	 return string.char(table.unpack(octs))
+      for _, b in ipairs{string.byte(data, 2, -1)} do
+	 value = value * 256 + b
       end
-   )
-end
-
-function M.bit_string(params)
-   return type_factory(
-      params,
-      {class='universal', constructed=false, tag=0x03, value_type='string'},
-      function(data)
-	 local unused = data:byte()
-	 if unused > 7 then error('Invalid DER encoding for unused bits') end
-
-	 local value = ''
-	 while #data > 1 do
-	    data = data:sub(2, -1)
-	    local oct = data:byte()
-	    for i=7,#data == 1 and unused or 0,-1 do
-	       local mask = bit32.lshift(1, i)
-	       value = value..(bit32.band(oct, mask) == mask and '1' or '0')
-	    end
-	 end
-	 return value
-      end,
-      function(value)
-	 local octs = {}
-	 local unused = 0
-	 while value > '' do
-	    local oct = 0
-	    unused = 8
-	    while value > '' and unused > 0 do
-	       unused = unused - 1
-	       oct = bit32.bor(
-		  oct, bit32.lshift(tonumber(value:sub(1, 1), 2), unused)
-	       )
-	       value = value:sub(2, -1)
-	    end
-	    table.insert(octs, oct)
-	 end
-	 table.insert(octs, 1, unused)
-	 return string.char(table.unpack(octs))
+      return value
+   end,
+   function(value)
+      if value ~= math.floor(value) then
+	 error('Not an integer: '..value)
       end
-   )
-end
 
-function M.octet_string(params) return str_factory(params, 0x04) end
+      -- negative integers not supported
+      assert(value > -1)
 
-function M.ia5string(params) return str_factory(params, 0x16) end
+      local octs = {}
+      while value > 0 do
+	 table.insert(octs, 1, value % 256)
+	 value = math.floor(value / 256)
+      end
+      if bit32.band(octs[1], 0x80) == 0x80 then table.insert(octs, 1, 0) end
+      return string.char(table.unpack(octs))
+   end
+){class='universal', constructed=false, tag=0x02, value_type='number'}
+
+M.bit_string = type_factory(
+   function(data)
+      local unused = data:byte()
+      if unused > 7 then error('Invalid DER encoding for unused bits') end
+
+      local value = ''
+      while #data > 1 do
+	 data = data:sub(2, -1)
+	 local oct = data:byte()
+	 for i=7,#data == 1 and unused or 0,-1 do
+	    local mask = bit32.lshift(1, i)
+	    value = value..(bit32.band(oct, mask) == mask and '1' or '0')
+	 end
+      end
+      return value
+   end,
+   function(value)
+      local octs = {}
+      local unused = 0
+      while value > '' do
+	 local oct = 0
+	 unused = 8
+	 while value > '' and unused > 0 do
+	    unused = unused - 1
+	    oct = bit32.bor(
+	       oct, bit32.lshift(tonumber(value:sub(1, 1), 2), unused)
+	    )
+	    value = value:sub(2, -1)
+	 end
+	 table.insert(octs, oct)
+      end
+      table.insert(octs, 1, unused)
+      return string.char(table.unpack(octs))
+   end
+){class='universal', constructed=false, tag=0x03, value_type='string'}
+
+M.octet_string = str_factory(0x04)
+
+M.ia5string = str_factory(0x16)
 
 function M.explicit(tag, syntax)
    return type_factory(
-      {class='context', constructed=true, tag=tag},
-      nil,
       function(data) return syntax.decode(data) end,
       function(value) return syntax.encode(value) end
-   )
+   ){class='context', constructed=true, tag=tag}
 end
 
-function M.sequence(comps, params)
+function M.sequence(comps)
    return seq_factory(
-      params,
       function(data)
 	 local value = {}
 	 for _, comp in ipairs(comps) do
@@ -287,11 +273,8 @@ function M.sequence(comps, params)
    )
 end
 
-function M.sequence_of(comps, params)
-   if not params then params = {} end
-
+function M.sequence_of(comps)
    return seq_factory(
-      params,
       function(data)
 	 local value = {}
 	 while data > '' do
