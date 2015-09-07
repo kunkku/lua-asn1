@@ -27,7 +27,7 @@ local function split(data)
    return meta, data:sub(ml + 1, -1)
 end
 
-local function factory(decoder, encoder, params)
+local function define(decoder, encoder, params)
    if not params then params = {} end
 
    local function decode(data) return decoder(data, params) end
@@ -43,7 +43,7 @@ local function factory(decoder, encoder, params)
 	 end,
 	 encode=encode,
 	 extend=function(dec, enc)
-	    return factory(
+	    return define(
 	       function(data) return dec(decode(data)) end,
 	       function(value) return encode(enc(value)) end,
 	       params
@@ -56,13 +56,13 @@ local function factory(decoder, encoder, params)
 	       if p.tag and not p.class then p.class = 'context' end
 	       setmetatable(p, {__index=params})
 	    else p = params end
-	    return factory(decoder, encoder, p)
+	    return define(decoder, encoder, p)
 	 end
       }
    )
 end
 
-local function type_factory(decoder, encoder)
+local function define_type(decoder, encoder)
 
    local function tag(params)
       -- high tag numbers not supported
@@ -84,7 +84,7 @@ local function type_factory(decoder, encoder)
       return not params.size or check_range(#value, params.size)
    end
 
-   return factory(
+   return define(
       function(data, params)
 	 local meta, data = split(data)
 	 if #data ~= meta.len then
@@ -135,22 +135,22 @@ local function type_factory(decoder, encoder)
    )
 end
 
-local function str_factory(tag)
+local function define_str(tag)
    local function identity(s) return s end
-   return type_factory(identity, identity){
+   return define_type(identity, identity){
       class='universal', constructed=false, tag=tag, value_type='string'
    }
 end
 
-local function seq_factory(decoder, encoder)
-   return type_factory(decoder, encoder){
+local function define_seq(decoder, encoder)
+   return define_type(decoder, encoder){
       class='universal', constructed=true, tag=0x10, value_type='table'
    }
 end
 
 
 function M.choice(alts)
-   return factory(
+   return define(
       function(data)
 	 for _, alt in ipairs(alts) do
 	    local value = alt[2]._decode(data)
@@ -172,7 +172,7 @@ function M.choice(alts)
    )
 end
 
-M.integer = type_factory(
+M.integer = define_type(
    function(data)
       local value = string.byte(data)
 
@@ -202,7 +202,7 @@ M.integer = type_factory(
    end
 ){class='universal', constructed=false, tag=0x02, value_type='number'}
 
-M.bit_string = type_factory(
+M.bit_string = define_type(
    function(data)
       local unused = data:byte()
       if unused > 7 then error('Invalid DER encoding for unused bits') end
@@ -238,19 +238,19 @@ M.bit_string = type_factory(
    end
 ){class='universal', constructed=false, tag=0x03, value_type='string'}
 
-M.octet_string = str_factory(0x04)
+M.octet_string = define_str(0x04)
 
-M.ia5string = str_factory(0x16)
+M.ia5string = define_str(0x16)
 
 function M.explicit(tag, syntax)
-   return type_factory(
+   return define_type(
       function(data) return syntax.decode(data) end,
       function(value) return syntax.encode(value) end
    ){class='context', constructed=true, tag=tag}
 end
 
 function M.sequence(comps)
-   return seq_factory(
+   return define_seq(
       function(data)
 	 local value = {}
 	 for _, comp in ipairs(comps) do
@@ -274,7 +274,7 @@ function M.sequence(comps)
 end
 
 function M.sequence_of(comps)
-   return seq_factory(
+   return define_seq(
       function(data)
 	 local value = {}
 	 while data > '' do
