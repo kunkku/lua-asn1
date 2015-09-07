@@ -10,7 +10,7 @@ local M = {}
 M.KeyIdentifier = asn1.octet_string
 
 M.AuthorityKeyIdentifier = asn1.sequence{
-   {'keyIdentifier', asn1.explicit(0, M.KeyIdentifier)}
+   {'keyIdentifier', M.KeyIdentifier{tag=0}}
 }
 
 M.CRLDistributionPoints = asn1.sequence_of(
