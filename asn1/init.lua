@@ -1,6 +1,6 @@
 --[[
 ASN.1 Framework for Lua
-Copyright (c) 2015 Kaarle Ritvanen
+Copyright (c) 2015-2017 Kaarle Ritvanen
 See LICENSE file for license details
 --]]
 
@@ -38,7 +38,7 @@ local function define(decoder, encoder, params)
 	 _decode=decode,
 	 decode=function(data)
 	    local value = decode(data)
-	    if value then return value end
+	    if value ~= nil then return value end
 	    error('DER data does not conform to type definition')
 	 end,
 	 encode=encode,
@@ -171,6 +171,11 @@ function M.choice(alts)
       end
    )
 end
+
+M.boolean = define_type(
+   function(data) return string.byte(data) ~= 0x00 end,
+   function(value) return string.char(value and 0xFF or 0x00) end
+){class='universal', constructed=false, tag=0x01, value_type='boolean'}
 
 M.integer = define_type(
    function(data)
