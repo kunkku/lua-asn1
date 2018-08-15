@@ -1,5 +1,5 @@
 --[[
-Copyright (c) 2015 Kaarle Ritvanen
+Copyright (c) 2015-2018 Kaarle Ritvanen
 See LICENSE file for license details
 --]]
 
@@ -11,6 +11,20 @@ M.KeyIdentifier = asn1.octet_string
 
 M.AuthorityKeyIdentifier = asn1.sequence{
    {'keyIdentifier', M.KeyIdentifier{tag=0}}
+}
+
+M.KeyUsage = asn1.bit_string{
+   enum={
+      'digitalSignature',
+      'nonRepudiation',
+      'keyEncipherment',
+      'dataEncipherment',
+      'keyAgreement',
+      'keyCertSign',
+      'cRLSign',
+      'encipherOnly',
+      'decipherOnly'
+   }
 }
 
 M.CRLDistributionPoints = asn1.sequence_of(
