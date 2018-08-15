@@ -1,6 +1,6 @@
 --[[
 ASN.1 Framework for Lua
-Copyright (c) 2015-2017 Kaarle Ritvanen
+Copyright (c) 2015-2018 Kaarle Ritvanen
 See LICENSE file for license details
 --]]
 
@@ -25,6 +25,11 @@ local function split(data)
 
    meta.total_len = ml + meta.len
    return meta, data:sub(ml + 1, -1)
+end
+
+local function check_type(v, t)
+   local vt = type(v)
+   if vt ~= t then error('Invalid value ('..t..' expected, got '..vt..')') end
 end
 
 local function define(decoder, encoder, params)
@@ -96,18 +101,13 @@ local function define_type(decoder, encoder)
 	 end
 	 if meta.tag ~= tag(params) then return end
 
-	 local value = decoder(data)
+	 local value = decoder(data, params)
 	 if check_size(value, params) and check_range(value, params) then
 	    return value
 	 end
       end,
       function(value, params)
-	 if params.value_type and type(value) ~= params.value_type then
-	    error(
-	       'Invalid value ('..params.value_type..' expeted, got '..
-		  type(value)..')'
-	    )
-	 end
+	 if params.value_type then check_type(value, params.value_type) end
 	 if not check_size(value, params) then
 	    error('Value to be encoded is of invalid length ('..#value..')')
 	 end
@@ -117,7 +117,7 @@ local function define_type(decoder, encoder)
 	    )
 	 end
 
-	 local data = encoder(value)
+	 local data = encoder(value, params)
 	 local len = #data
 	 local enc_len = {}
 
@@ -208,7 +208,7 @@ M.integer = define_type(
 ){class='universal', constructed=false, tag=0x02, value_type='number'}
 
 M.bit_string = define_type(
-   function(data)
+   function(data, params)
       local unused = data:byte()
       if unused > 7 then error('Invalid DER encoding for unused bits') end
 
@@ -221,9 +221,23 @@ M.bit_string = define_type(
 	    value = value..(bit32.band(oct, mask) == mask and '1' or '0')
 	 end
       end
-      return value
+
+      if not params.enum then return value end
+
+      local m = {}
+      for i = 1,#value do m[params.enum[i]] = value:sub(i, i) == '1' end
+      return m
    end,
-   function(value)
+   function(value, params)
+      if params.enum then
+	 check_type(value, 'table')
+	 local s = ''
+	 for _, k in ipairs(params.enum) do
+	    s = s..(value[k] and '1' or '0')
+	 end
+	 value = s
+      else check_type(value, 'string') end
+
       local octs = {}
       local unused = 0
       while value > '' do
@@ -241,7 +255,7 @@ M.bit_string = define_type(
       table.insert(octs, 1, unused)
       return string.char(table.unpack(octs))
    end
-){class='universal', constructed=false, tag=0x03, value_type='string'}
+){class='universal', constructed=false, tag=0x03}
 
 M.octet_string = define_str(0x04)
 
