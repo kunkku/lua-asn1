@@ -1,9 +1,8 @@
-# Copyright (c) 2015 Kaarle Ritvanen
+# Copyright (c) 2015-2025 Kaarle Ritvanen
 # See LICENSE file for license details
 
 ROOT_DIR := /
-LUA_VERSION := 5.2
-MOD_DIR := $(ROOT_DIR)/usr/share/lua/$(LUA_VERSION)/asn1
+MOD_DIR := $(ROOT_DIR)/usr/share/lua/common/asn1
 
 all: install
 

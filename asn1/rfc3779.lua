@@ -1,9 +1,10 @@
 --[[
-Copyright (c) 2015 Kaarle Ritvanen
+Copyright (c) 2015-2025 Kaarle Ritvanen
 See LICENSE file for license details
 --]]
 
 local asn1 = require('asn1')
+local bit32 = require('bit32')
 local stringy = require('stringy')
 
 local M = {}
